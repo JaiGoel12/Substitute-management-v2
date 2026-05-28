@@ -1,0 +1,6 @@
+Day,Period,Alice,Bob,Carol,Dan
+Monday,1,10A,9B,,11C
+Monday,2,,10A,8A,
+Monday,3,11C,,9B,10A
+Tuesday,1,9B,11C,,8A
+Tuesday,2,10A,,,11C
