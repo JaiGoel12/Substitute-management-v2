@@ -5,16 +5,23 @@ import type { Substitution, TeacherGrid } from './types'
 import { isCellFree } from './cellNormalize'
 import {
   applySubstitutions,
+  autoAssignSubstitutions,
   collectSubstitutionNeeds,
+  dayFromSlotKey,
   makePickKey,
+  MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY,
   periodsForDay,
   removePicksForAbsentTeacher,
   substituteOptionsForPeriodSlot,
+  teachersAtDailySubstitutionCap,
+  unassignReasonLabel,
   uniqueDays,
+  type AutoAssignResult,
 } from './substituteLogic'
 import { downloadSubstitutionSummaryPdf } from './pdfTimetable'
 import { groupSubsByAbsent, slotPeriodLabel } from './summaryTableModel'
 import { DEFAULT_TIMETABLE_URL } from './defaultTimetable'
+import { sortTeachersByFirstName } from './teacherDisplay'
 
 function picksFromSubsExcluding(subs: Substitution[], excludeIndex: number): Record<string, string> {
   const o: Record<string, string> = {}
@@ -35,22 +42,6 @@ function uniqueAbsentsFromSubs(subs: Substitution[]): string[] {
     }
   }
   return out
-}
-
-function picksRecordFromSubs(rows: Substitution[]): Record<string, string> {
-  const o: Record<string, string> = {}
-  for (const s of rows) {
-    o[makePickKey(s.slotKey, s.absentTeacher)] = s.substituteTeacher
-  }
-  return o
-}
-
-/** Saved summary rows + current assign step; UI picks override saved when the user changes a row. */
-function mergedAssignmentPicks(
-  subs: Substitution[],
-  substitutePicks: Record<string, string>,
-): Record<string, string> {
-  return { ...picksRecordFromSubs(subs), ...substitutePicks }
 }
 
 function effectiveSubstitutePick(
@@ -81,6 +72,8 @@ function App() {
   /** Keys from makePickKey(slotKey, absentTeacher) → substitute name */
   const [substitutePicks, setSubstitutePicks] = useState<Record<string, string>>({})
   const [assignPhase, setAssignPhase] = useState<'mark-absent' | 'choose-subs'>('mark-absent')
+  const [autoAssignReport, setAutoAssignReport] = useState<AutoAssignResult | null>(null)
+  const [autoFilledKeys, setAutoFilledKeys] = useState<Set<string>>(() => new Set())
 
   const working = useMemo(() => {
     if (!baseGrid) return { grid: null as TeacherGrid | null, err: null as string | null }
@@ -100,15 +93,32 @@ function App() {
   const days = baseGrid ? uniqueDays(baseGrid) : []
   const periods = day && baseGrid ? periodsForDay(baseGrid, day) : []
 
-  const orderedAbsent =
-    baseGrid && absentees.length
-      ? baseGrid.teachers.filter((t) => absentees.includes(t))
-      : []
+  const teachersByFirstName = useMemo(
+    () => (baseGrid ? sortTeachersByFirstName(baseGrid.teachers) : []),
+    [baseGrid],
+  )
+
+  const orderedAbsent = useMemo(() => {
+    if (!baseGrid || !absentees.length) return []
+    return sortTeachersByFirstName(baseGrid.teachers.filter((t) => absentees.includes(t)))
+  }, [baseGrid, absentees])
+
+  const currentNeedsCount =
+    baseGrid && day && orderedAbsent.length
+      ? collectSubstitutionNeeds(baseGrid, day, orderedAbsent).length
+      : 0
+
+  const teachersAtCapToday = useMemo(() => {
+    if (!baseGrid || !day) return []
+    return teachersAtDailySubstitutionCap(subs, substitutePicks, day, baseGrid.teachers)
+  }, [baseGrid, day, subs, substitutePicks])
 
   useEffect(() => {
     setAbsentees([])
     setSubstitutePicks({})
     setAssignPhase('mark-absent')
+    setAutoAssignReport(null)
+    setAutoFilledKeys(new Set())
   }, [day])
 
   useEffect(() => {
@@ -137,6 +147,8 @@ function App() {
       setAbsentees([])
       setSubstitutePicks({})
       setAssignPhase('mark-absent')
+      setAutoAssignReport(null)
+      setAutoFilledKeys(new Set())
       try {
         const res = await fetch(DEFAULT_TIMETABLE_URL)
         if (!res.ok) {
@@ -182,6 +194,69 @@ function App() {
   function setPickSlot(slotKey: string, absent: string, substitute: string) {
     const key = makePickKey(slotKey, absent)
     setSubstitutePicks((p) => ({ ...p, [key]: substitute }))
+    setAutoFilledKeys((prev) => {
+      if (!prev.has(key)) return prev
+      const next = new Set(prev)
+      next.delete(key)
+      return next
+    })
+  }
+
+  function runAutoAssign(andGoToStep: boolean) {
+    if (!baseGrid || !day || orderedAbsent.length === 0) {
+      setError('Mark at least one absent teacher first.')
+      return
+    }
+    setError(null)
+    const result = autoAssignSubstitutions(baseGrid, day, orderedAbsent, subs)
+    setSubstitutePicks(result.picks)
+    setAutoAssignReport(result)
+    setAutoFilledKeys(new Set(result.filledKeys))
+    if (andGoToStep) setAssignPhase('choose-subs')
+  }
+
+  function clearCurrentPicks() {
+    if (!baseGrid || !day || orderedAbsent.length === 0) return
+    setSubstitutePicks((prev) => {
+      const next = { ...prev }
+      for (const absent of orderedAbsent) {
+        for (const period of periodsForDay(baseGrid, day)) {
+          delete next[makePickKey(`${day}|${period}`, absent)]
+        }
+      }
+      return next
+    })
+    setAutoAssignReport(null)
+    setAutoFilledKeys(new Set())
+    setError(null)
+  }
+
+  function substituteSlotOptions(
+    slotKey: string,
+    absent: string,
+    picks: Record<string, string>,
+    excludePickKey?: string,
+  ): string[] {
+    if (!baseGrid || !day) return []
+    const rowKey = excludePickKey ?? makePickKey(slotKey, absent)
+    const options = substituteOptionsForPeriodSlot(
+      baseGrid,
+      slotKey,
+      orderedAbsent,
+      picks,
+      absent,
+      {
+        existingSubs: subs,
+        day,
+        maxPerDay: MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY,
+        excludePickKey: rowKey,
+      },
+    )
+    const current = effectiveSubstitutePick(subs, picks, slotKey, absent).trim()
+    if (current && !options.includes(current)) {
+      return [...options, current].sort((a, b) => a.localeCompare(b))
+    }
+    return options
   }
 
   function pickValue(slotKey: string, absent: string): string {
@@ -230,6 +305,8 @@ function App() {
     setEditSubstituteDraft('')
     setSubstitutePicks({})
     setAssignPhase('mark-absent')
+    setAutoAssignReport(null)
+    setAutoFilledKeys(new Set())
   }
 
   function goToSubstituteStep() {
@@ -239,6 +316,10 @@ function App() {
       return
     }
     setAssignPhase('choose-subs')
+  }
+
+  function goToSubstituteStepAndAutoAssign() {
+    runAutoAssign(true)
   }
 
   function backToAbsentStep() {
@@ -352,7 +433,7 @@ function App() {
                 These teachers cannot be assigned as substitutes in any period.
               </p>
               <div className="checkbox-grid">
-                {baseGrid.teachers.map((t) => (
+                {teachersByFirstName.map((t) => (
                   <label key={t} className="check-row">
                     <input
                       type="checkbox"
@@ -369,6 +450,14 @@ function App() {
                     Clear absent selection
                   </button>
                 )}
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={absentees.length === 0}
+                  onClick={goToSubstituteStepAndAutoAssign}
+                >
+                  Auto-assign &amp; review
+                </button>
                 <button type="button" className="primary" onClick={goToSubstituteStep}>
                   Next: assign substitutes by period
                 </button>
@@ -380,10 +469,44 @@ function App() {
             <div className="assign-block">
               <h3 className="assign-title">Substitutes (per period, per class)</h3>
               <p className="hint">
-                For each <strong>class period</strong>, pick a teacher who is free then. Teachers
-                already assigned (including from earlier confirmations in this session) are hidden
-                from other rows in that period.
+                Each substitute: max <strong>{MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY}</strong> periods
+                per day. Auto-assign picks teachers with the most free periods left. You can change
+                any row before confirming.
               </p>
+              {autoAssignReport && (
+                <div
+                  className={`auto-assign-banner${autoAssignReport.unassigned.length ? ' auto-assign-banner-warn' : ''}`}
+                  role="status"
+                >
+                  <p className="auto-assign-banner-title">
+                    Assigned {autoAssignReport.filledKeys.length} of {currentNeedsCount} periods
+                  </p>
+                  {autoAssignReport.unassigned.length > 0 && (
+                    <ul className="auto-assign-unassigned">
+                      {autoAssignReport.unassigned.map((u) => (
+                        <li key={makePickKey(u.slotKey, u.absentTeacher)}>
+                          <strong>{u.absentTeacher}</strong> — {slotPeriodLabel(u.slotKey)} (
+                          {u.className}): {unassignReasonLabel(u.reason)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {teachersAtCapToday.length > 0 && (
+                    <p className="auto-assign-cap-hint">
+                      At max {MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY} substitutions today:{' '}
+                      <strong>{teachersAtCapToday.join(', ')}</strong>
+                    </p>
+                  )}
+                </div>
+              )}
+              <div className="step-actions assign-toolbar">
+                <button type="button" className="primary" onClick={() => runAutoAssign(false)}>
+                  Auto-assign using rules
+                </button>
+                <button type="button" className="secondary" onClick={clearCurrentPicks}>
+                  Clear picks
+                </button>
+              </div>
               <p className="hint edit-absent-line">
                 <button type="button" className="linkish" onClick={backToAbsentStep}>
                   ← Edit absent list
@@ -417,14 +540,17 @@ function App() {
                             </tr>
                           )
                         }
-                        const options = substituteOptionsForPeriodSlot(
-                          baseGrid,
-                          slotKey,
-                          orderedAbsent,
-                          mergedAssignmentPicks(subs, substitutePicks),
-                          absent,
-                        )
+                        const pickKey = makePickKey(slotKey, absent)
                         const val = pickValue(slotKey, absent)
+                        const options = substituteSlotOptions(
+                          slotKey,
+                          absent,
+                          substitutePicks,
+                        )
+                        const isAutoSuggested =
+                          autoFilledKeys.has(pickKey) &&
+                          val.trim() !== '' &&
+                          options.includes(val)
                         return (
                           <tr key={slotKey}>
                             <td>{period}</td>
@@ -441,8 +567,11 @@ function App() {
                                   </option>
                                 ))}
                               </select>
+                              {isAutoSuggested && (
+                                <span className="auto-suggest-hint">Suggested — most free periods</span>
+                              )}
                               {options.length === 0 && (
-                                <span className="warn-inline"> No free teacher.</span>
+                                <span className="warn-inline"> No eligible teacher.</span>
                               )}
                             </td>
                           </tr>
@@ -491,12 +620,19 @@ function App() {
                     const editIdx = row.originalIndex
                     let editOptions: string[] = []
                     if (baseGrid && isEditing) {
+                      const editDay = dayFromSlotKey(row.sub.slotKey)
                       editOptions = substituteOptionsForPeriodSlot(
                         baseGrid,
                         row.sub.slotKey,
                         uniqueAbsentsFromSubs(subs),
                         picksFromSubsExcluding(subs, editIdx),
                         row.sub.absentTeacher,
+                        {
+                          existingSubs: subs,
+                          day: editDay,
+                          maxPerDay: MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY,
+                          excludePickKey: rowPickKey,
+                        },
                       )
                       const d = editSubstituteDraft.trim()
                       if (d && !editOptions.includes(d)) {

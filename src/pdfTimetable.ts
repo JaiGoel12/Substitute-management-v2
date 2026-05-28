@@ -17,6 +17,37 @@ function drawPdfSchoolHeader(doc: jsPDF): void {
   doc.setFont('helvetica', 'normal')
 }
 
+function drawPdfDate(
+  doc: jsPDF,
+  dateStr: string,
+  margin: { left: number; right: number },
+): void {
+  const pageW = doc.internal.pageSize.getWidth()
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(14)
+  doc.setTextColor(33, 37, 41)
+  const dateW = doc.getTextWidth(dateStr)
+  doc.text(dateStr, pageW - margin.right - dateW, 19)
+}
+
+/** School name + date on every page; title only on page 1. */
+function stampPdfHeaders(
+  doc: jsPDF,
+  opts: { dateStr: string; title: string; margin: { left: number; right: number } },
+): void {
+  const total = doc.getNumberOfPages()
+  for (let p = 1; p <= total; p++) {
+    doc.setPage(p)
+    drawPdfSchoolHeader(doc)
+    drawPdfDate(doc, opts.dateStr, opts.margin)
+    if (p === 1) {
+      doc.setFontSize(14)
+      doc.setTextColor(33, 37, 41)
+      doc.text(opts.title, opts.margin.left, 19)
+    }
+  }
+}
+
 function slotKey(day: string, period: string): string {
   return `${day.trim()}|${period.trim()}`
 }
@@ -105,21 +136,9 @@ export function downloadSubstitutionSummaryPdf(
   const groups = groupSubsByAbsent(subs)
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  const pageW = doc.internal.pageSize.getWidth()
-  const margin = { left: 14, right: 14 }
+  const margin = { left: 14, right: 14, top: 27 }
   const gapBetweenGroupsMm = 10
-
-  drawPdfSchoolHeader(doc)
-
-  doc.setTextColor(33, 37, 41)
-  doc.setFontSize(14)
-  doc.text(title, margin.left, 19)
-
   const dateStr = formatSubstitutionDate()
-  doc.setFontSize(14)
-  doc.setTextColor(33, 37, 41)
-  const dateW = doc.getTextWidth(dateStr)
-  doc.text(dateStr, pageW - margin.right - dateW, 19)
 
   const columnStylesRowspan = {
     0: { cellWidth: 36 },
@@ -175,7 +194,7 @@ export function downloadSubstitutionSummaryPdf(
         data.cell.styles.fillColor = i % 2 === 0 ? light : alt
         data.cell.styles.textColor = [33, 37, 41]
       },
-      margin: { left: margin.left, right: margin.right },
+      margin: { left: margin.left, right: margin.right, top: margin.top },
     })
 
     const last = (doc as { lastAutoTable?: { finalY: number } }).lastAutoTable
@@ -185,6 +204,8 @@ export function downloadSubstitutionSummaryPdf(
       startY = finalY + gapBetweenGroupsMm
     }
   })
+
+  stampPdfHeaders(doc, { dateStr, title, margin })
 
   doc.save(`substitution-summary-${sanitizeFilename(new Date().toISOString().slice(0, 10))}.pdf`)
 }
