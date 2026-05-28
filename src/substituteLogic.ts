@@ -1,5 +1,9 @@
 import { isCellFree } from './cellNormalize'
-import { canTeachAsSubstituteInSlot, isBlockedAsSubstituteInSlot } from './substituteAvailability'
+import {
+  canTeachAsSubstituteInSlot,
+  isBlockedAsSubstituteInSlot,
+  maxSubstitutionsPerDayForTeacher,
+} from './substituteAvailability'
 import type { SlotKey, Substitution, TeacherGrid } from './types'
 
 export const MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY = 3
@@ -58,7 +62,11 @@ export function teachersAtDailySubstitutionCap(
   teachers: string[],
   max = MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY,
 ): string[] {
-  return teachers.filter((t) => substitutionCountOnDay(subs, picks, day, t) >= max)
+  return teachers.filter(
+    (t) =>
+      substitutionCountOnDay(subs, picks, day, t) >=
+      maxSubstitutionsPerDayForTeacher(t, max),
+  )
 }
 
 /** How many substitution periods this teacher covers on `day` (confirmed + in-progress picks). */
@@ -218,7 +226,8 @@ export function substituteOptionsForPeriodSlot(
     const day = opts.day
     result = result.filter(
       (t) =>
-        substitutionCountOnDay(existingSubs, picks, day, t, opts.excludePickKey) < max,
+        substitutionCountOnDay(existingSubs, picks, day, t, opts.excludePickKey) <
+        maxSubstitutionsPerDayForTeacher(t, max),
     )
   }
 
