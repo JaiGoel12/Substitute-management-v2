@@ -29,6 +29,18 @@ const BLOCKED_AS_SUBSTITUTE_FIRST_PERIODS: { nameMatch: string; periodCount: num
   { nameMatch: 'NANCY', periodCount: 2 },
 ]
 
+/** Per-teacher daily substitution cap (default for everyone else is set in substituteLogic). */
+const MAX_SUBSTITUTIONS_PER_TEACHER_OVERRIDE: { nameMatch: string; maxPerDay: number }[] = [
+  { nameMatch: 'NAVEEN KUMAR', maxPerDay: 1 },
+]
+
+export function maxSubstitutionsPerDayForTeacher(teacher: string, defaultMax: number): number {
+  for (const rule of MAX_SUBSTITUTIONS_PER_TEACHER_OVERRIDE) {
+    if (teacherNameMatches(teacher, rule.nameMatch)) return rule.maxPerDay
+  }
+  return defaultMax
+}
+
 function periodIndexOnDay(grid: TeacherGrid, day: string, slotKey: SlotKey): number {
   const period = slotKey.split('|')[1]?.trim() ?? ''
   const order = periodsForDay(grid, day)
