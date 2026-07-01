@@ -7,7 +7,6 @@ import {
   applySubstitutions,
   autoAssignSubstitutions,
   collectSubstitutionNeeds,
-  dayFromSlotKey,
   makePickKey,
   MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY,
   periodsForDay,
@@ -231,26 +230,20 @@ function App() {
     setError(null)
   }
 
+  /** Manual pick dropdown — no daily substitution cap (cap applies to auto-assign only). */
   function substituteSlotOptions(
     slotKey: string,
     absent: string,
     picks: Record<string, string>,
-    excludePickKey?: string,
   ): string[] {
     if (!baseGrid || !day) return []
-    const rowKey = excludePickKey ?? makePickKey(slotKey, absent)
     const options = substituteOptionsForPeriodSlot(
       baseGrid,
       slotKey,
       orderedAbsent,
       picks,
       absent,
-      {
-        existingSubs: subs,
-        day,
-        maxPerDay: MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY,
-        excludePickKey: rowKey,
-      },
+      { existingSubs: subs },
     )
     const current = effectiveSubstitutePick(subs, picks, slotKey, absent).trim()
     if (current && !options.includes(current)) {
@@ -469,9 +462,10 @@ function App() {
             <div className="assign-block">
               <h3 className="assign-title">Substitutes (per period, per class)</h3>
               <p className="hint">
-                Each substitute: max <strong>{MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY}</strong> periods
-                per day. Auto-assign picks teachers with the most free periods left. You can change
-                any row before confirming.
+                <strong>Auto-assign</strong> limits each substitute to max{' '}
+                <strong>{MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY}</strong> periods per day (and other
+                school rules). <strong>Manual</strong> picks are not capped — choose anyone free in
+                that period. You can change any row before confirming.
               </p>
               {autoAssignReport && (
                 <div
@@ -493,8 +487,9 @@ function App() {
                   )}
                   {teachersAtCapToday.length > 0 && (
                     <p className="auto-assign-cap-hint">
-                      At max {MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY} substitutions today:{' '}
-                      <strong>{teachersAtCapToday.join(', ')}</strong>
+                      At auto-assign limit ({MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY}/day):{' '}
+                      <strong>{teachersAtCapToday.join(', ')}</strong> — you may still assign them
+                      manually if needed.
                     </p>
                   )}
                 </div>
@@ -620,19 +615,13 @@ function App() {
                     const editIdx = row.originalIndex
                     let editOptions: string[] = []
                     if (baseGrid && isEditing) {
-                      const editDay = dayFromSlotKey(row.sub.slotKey)
                       editOptions = substituteOptionsForPeriodSlot(
                         baseGrid,
                         row.sub.slotKey,
                         uniqueAbsentsFromSubs(subs),
                         picksFromSubsExcluding(subs, editIdx),
                         row.sub.absentTeacher,
-                        {
-                          existingSubs: subs,
-                          day: editDay,
-                          maxPerDay: MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY,
-                          excludePickKey: rowPickKey,
-                        },
+                        { existingSubs: subs },
                       )
                       const d = editSubstituteDraft.trim()
                       if (d && !editOptions.includes(d)) {
