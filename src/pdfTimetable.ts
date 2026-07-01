@@ -1,9 +1,8 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { Substitution, TeacherGrid } from './types'
+import type { Substitution } from './types'
 import { roomForClass } from './classRoomMap'
 import { groupSubsByAbsent, slotPeriodLabel } from './summaryTableModel'
-import { allClassesFromGrid, invertToClassCentric, periodsForDay } from './substituteLogic'
 
 /** Shown at the top of every exported PDF. */
 const PDF_SCHOOL_HEADER = 'GMSSSS Jahajpul, Hisar'
@@ -46,10 +45,6 @@ function stampPdfHeaders(
       doc.text(opts.title, opts.margin.left, 19)
     }
   }
-}
-
-function slotKey(day: string, period: string): string {
-  return `${day.trim()}|${period.trim()}`
 }
 
 type SummaryCell =
@@ -210,56 +205,6 @@ export function downloadSubstitutionSummaryPdf(
   doc.save(`substitution-summary-${sanitizeFilename(new Date().toISOString().slice(0, 10))}.pdf`)
 }
 
-/**
- * PDF: one table per scope — rows = classes, columns = periods for the chosen day.
- * Cell = teacher name after substitutions.
- */
-export function downloadSubstitutedClassTimetablePdf(
-  grid: TeacherGrid,
-  day: string,
-  title = 'Substituted timetable',
-): void {
-  const periods = periodsForDay(grid, day)
-  const classes = allClassesFromGrid(grid)
-  const classCentric = invertToClassCentric(grid)
-
-  const head = ['Class', ...periods.map(periodColumnTitle)]
-  const body = classes.map((cls) => {
-    const row: string[] = [cls]
-    for (const p of periods) {
-      const sk = slotKey(day, p)
-      const t = classCentric[sk]?.[cls] ?? ''
-      row.push(t || '—')
-    }
-    return row
-  })
-
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-  drawPdfSchoolHeader(doc)
-  doc.setFontSize(14)
-  const dayTitle = day.trim() === 'Timetable' ? 'Daily timetable' : day.trim()
-  doc.text(`${title} — ${dayTitle}`, 14, 19)
-  doc.setFontSize(9)
-
-  autoTable(doc, {
-    startY: 25,
-    head: [head],
-    body,
-    styles: { fontSize: 8, cellPadding: 1.5 },
-    headStyles: { fillColor: [66, 73, 85] },
-    margin: { left: 14, right: 14 },
-  })
-
-  doc.save(`substituted-timetable-${sanitizeFilename(dayTitle)}.pdf`)
-}
-
 function sanitizeFilename(s: string): string {
   return s.replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '') || 'export'
-}
-
-/** Avoid "PP1" when period id is already "P1". */
-function periodColumnTitle(p: string): string {
-  const t = p.trim()
-  if (/^P\s*\d+$/i.test(t)) return t.replace(/\s+/g, '')
-  return `P${t}`
 }

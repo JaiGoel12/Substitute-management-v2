@@ -1,8 +1,11 @@
 import * as XLSX from 'xlsx'
 import type { SlotKey, TeacherGrid } from './types'
 import { normalizeScheduleCell } from './cellNormalize'
+import { expandCellByWeekday, WEEKDAY_NAMES, weekdayNumberFromName } from './scheduleCell'
 
-const SINGLE_DAY_LABEL = 'Timetable'
+function weekdayNumberFromDayName(day: string): number | null {
+  return weekdayNumberFromName(day)
+}
 
 function normDay(s: string): string {
   return s.trim()
@@ -106,8 +109,13 @@ function parseLongFormat(rows: RowMatrix): TeacherGrid {
     for (const t of teachers) {
       const colIndex = header.indexOf(t)
       if (colIndex === -1) continue
-      const cell = row[colIndex]
-      const val = normalizeScheduleCell(String(cell ?? ''))
+      const raw = String(row[colIndex] ?? '')
+      const byWeekday = expandCellByWeekday(raw)
+      const dayNum = weekdayNumberFromDayName(day)
+      const val =
+        dayNum != null
+          ? normalizeScheduleCell(byWeekday[dayNum] ?? '')
+          : normalizeScheduleCell(raw)
       slots[key][t] = val
     }
   }
@@ -151,9 +159,11 @@ function parseTeacherRowPerPeriodColumns(rows: RowMatrix): TeacherGrid {
   }
 
   const slots: Record<SlotKey, Record<string, string>> = {}
-  const day = SINGLE_DAY_LABEL
   for (const pc of periodCols) {
-    slots[makeSlotKey(day, pc.name)] = {}
+    for (let d = 1; d <= 6; d++) {
+      const dayName = WEEKDAY_NAMES[d]
+      slots[makeSlotKey(dayName, pc.name)] = {}
+    }
   }
 
   const teachers: string[] = []
@@ -165,9 +175,13 @@ function parseTeacherRowPerPeriodColumns(rows: RowMatrix): TeacherGrid {
     if (!teacherName) continue
     teachers.push(teacherName)
     for (const pc of periodCols) {
-      const raw = row[pc.index]
-      const val = normalizeScheduleCell(String(raw ?? ''))
-      slots[makeSlotKey(day, pc.name)][teacherName] = val
+      const raw = String(row[pc.index] ?? '')
+      const byWeekday = expandCellByWeekday(raw)
+      for (let d = 1; d <= 6; d++) {
+        const dayName = WEEKDAY_NAMES[d]
+        const val = normalizeScheduleCell(byWeekday[d] ?? '')
+        slots[makeSlotKey(dayName, pc.name)][teacherName] = val
+      }
     }
   }
 

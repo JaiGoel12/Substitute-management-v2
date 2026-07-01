@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
 import './App.css'
 import { parseTeacherGridFromBuffer } from './parseGrid'
 import type { Substitution, TeacherGrid } from './types'
@@ -21,6 +22,7 @@ import { downloadSubstitutionSummaryPdf } from './pdfTimetable'
 import { groupSubsByAbsent, slotPeriodLabel } from './summaryTableModel'
 import { DEFAULT_TIMETABLE_URL } from './defaultTimetable'
 import { sortTeachersByFirstName } from './teacherDisplay'
+import { todaysWeekdayName } from './scheduleCell'
 
 function picksFromSubsExcluding(subs: Substitution[], excludeIndex: number): Record<string, string> {
   const o: Record<string, string> = {}
@@ -73,6 +75,7 @@ function App() {
   const [assignPhase, setAssignPhase] = useState<'mark-absent' | 'choose-subs'>('mark-absent')
   const [autoAssignReport, setAutoAssignReport] = useState<AutoAssignResult | null>(null)
   const [autoFilledKeys, setAutoFilledKeys] = useState<Set<string>>(() => new Set())
+  const [teacherSearch, setTeacherSearch] = useState('')
 
   const working = useMemo(() => {
     if (!baseGrid) return { grid: null as TeacherGrid | null, err: null as string | null }
@@ -89,13 +92,18 @@ function App() {
   const workingGrid = working.grid
   const workingErr = working.err
 
-  const days = baseGrid ? uniqueDays(baseGrid) : []
   const periods = day && baseGrid ? periodsForDay(baseGrid, day) : []
 
   const teachersByFirstName = useMemo(
     () => (baseGrid ? sortTeachersByFirstName(baseGrid.teachers) : []),
     [baseGrid],
   )
+
+  const filteredTeachers = useMemo(() => {
+    const q = teacherSearch.trim().toLowerCase()
+    if (!q) return teachersByFirstName
+    return teachersByFirstName.filter((t) => t.toLowerCase().includes(q))
+  }, [teachersByFirstName, teacherSearch])
 
   const orderedAbsent = useMemo(() => {
     if (!baseGrid || !absentees.length) return []
@@ -132,7 +140,9 @@ function App() {
     })
     const g = parseTeacherGridFromBuffer(buf)
     setBaseGrid(g)
-    const d0 = uniqueDays(g)[0] ?? ''
+    const availableDays = uniqueDays(g)
+    const today = todaysWeekdayName()
+    const d0 = (today && availableDays.includes(today) ? today : availableDays[0]) ?? ''
     setDay(d0)
   }
 
@@ -383,6 +393,7 @@ function App() {
   }
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="app">
       <header className="header">
         <p className="header-kicker">Substitution planner</p>
@@ -392,51 +403,65 @@ function App() {
       {baseGrid && (
         <section className="card">
           <h2>Day + absent teachers</h2>
-          {days.length > 1 && (
-            <div className="row">
-              <label>
-                Day
-                <select
-                  value={day}
-                  onChange={(e) => {
-                    const d = e.target.value
-                    setDay(d)
-                  }}
-                >
-                  {days.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
           <p className="hint step-hint">
-            Periods in your file:{' '}
-            <strong>{periods.length ? periods.join(', ') : '—'}</strong>. Substitutions are built{' '}
-            <strong>per period</strong> for each absent teacher (skip periods where they are already
-            Free).
+            Day: <strong>{day || '—'}</strong>
           </p>
 
+          <AnimatePresence mode="wait" initial={false}>
           {assignPhase === 'mark-absent' && (
-            <fieldset className="absent-fieldset">
+            <motion.fieldset
+              key="mark-absent"
+              className="absent-fieldset"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            >
               <legend>Who is absent?</legend>
-              <p className="hint inline-hint">
-                These teachers cannot be assigned as substitutes in any period.
-              </p>
-              <div className="checkbox-grid">
-                {teachersByFirstName.map((t) => (
-                  <label key={t} className="check-row">
-                    <input
-                      type="checkbox"
-                      checked={absentees.includes(t)}
-                      onChange={() => toggleAbsent(t)}
-                    />
-                    <span>{t}</span>
-                  </label>
-                ))}
+              <div className="teacher-search">
+                <input
+                  type="search"
+                  className="teacher-search-input"
+                  placeholder="Search teacher by name…"
+                  value={teacherSearch}
+                  onChange={(e) => setTeacherSearch(e.target.value)}
+                  aria-label="Search teachers"
+                />
+                {teacherSearch && (
+                  <button
+                    type="button"
+                    className="linkish teacher-search-clear"
+                    onClick={() => setTeacherSearch('')}
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
+              <motion.div className="checkbox-grid" layout>
+                <AnimatePresence mode="popLayout" initial={false}>
+                  {filteredTeachers.map((t) => (
+                    <motion.label
+                      key={t}
+                      className="check-row"
+                      layout
+                      initial={{ opacity: 0, scale: 0.94 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.94 }}
+                      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={absentees.includes(t)}
+                        onChange={() => toggleAbsent(t)}
+                      />
+                      <span>{t}</span>
+                    </motion.label>
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+              {filteredTeachers.length === 0 && (
+                <p className="hint inline-hint">No teacher matches “{teacherSearch}”.</p>
+              )}
               <div className="step-actions">
                 {absentees.length > 0 && (
                   <button type="button" className="secondary" onClick={clearAbsentSelection}>
@@ -455,11 +480,18 @@ function App() {
                   Next: assign substitutes by period
                 </button>
               </div>
-            </fieldset>
+            </motion.fieldset>
           )}
 
           {assignPhase === 'choose-subs' && orderedAbsent.length > 0 && day && (
-            <div className="assign-block">
+            <motion.div
+              className="assign-block"
+              key="choose-subs"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            >
               <h3 className="assign-title">Substitutes (per period, per class)</h3>
               <p className="hint">
                 <strong>Auto-assign</strong> limits each substitute to max{' '}
@@ -528,8 +560,8 @@ function App() {
                         if (free) {
                           return (
                             <tr key={slotKey} className="row-muted">
-                              <td>{period}</td>
-                              <td colSpan={2}>
+                              <td data-label="Period">{period}</td>
+                              <td colSpan={2} data-label="Status">
                                 <span className="muted">Free — no substitution</span>
                               </td>
                             </tr>
@@ -548,9 +580,9 @@ function App() {
                           options.includes(val)
                         return (
                           <tr key={slotKey}>
-                            <td>{period}</td>
-                            <td className="class-cell">{cell}</td>
-                            <td>
+                            <td data-label="Period">{period}</td>
+                            <td className="class-cell" data-label="Class">{cell}</td>
+                            <td data-label="Substitute">
                               <select
                                 value={val}
                                 onChange={(e) => setPickSlot(slotKey, absent, e.target.value)}
@@ -585,8 +617,9 @@ function App() {
                   Confirm all substitutions
                 </button>
               </div>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
         </section>
       )}
 
@@ -742,7 +775,12 @@ function App() {
       {(error || workingErr) && (
         <p className="error">{error ?? workingErr}</p>
       )}
+
+      <footer className="app-footer">
+        <p>&copy; {new Date().getFullYear()} All rights reserved.</p>
+      </footer>
     </div>
+    </MotionConfig>
   )
 }
 

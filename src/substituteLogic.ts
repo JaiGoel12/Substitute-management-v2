@@ -1,4 +1,5 @@
 import { isCellFree } from './cellNormalize'
+import { sortWeekdayNames } from './scheduleCell'
 import {
   canTeachAsSubstituteInSlot,
   isBlockedAsSubstituteInSlot,
@@ -7,9 +8,6 @@ import {
 import type { SlotKey, Substitution, TeacherGrid } from './types'
 
 export const MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY = 3
-
-/** class name -> teacher for each slot (inverse of teacher grid for that slot). */
-export type ClassCentric = Record<SlotKey, Record<string, string>>
 
 export type UnassignReason = 'no_eligible_teacher' | 'all_at_max_load'
 
@@ -144,31 +142,6 @@ export function freePeriodCountOnDay(
     count++
   }
   return count
-}
-
-/**
- * Class → teacher(s) for each slot. If two teachers share the same class in one period
- * (co-teaching / split), names are merged with " · " in the PDF cell.
- */
-export function invertToClassCentric(grid: TeacherGrid): ClassCentric {
-  const out: ClassCentric = {}
-  for (const [slotKey, byTeacher] of Object.entries(grid.slots)) {
-    out[slotKey] = {}
-    for (const [teacher, className] of Object.entries(byTeacher)) {
-      const c = className.trim()
-      if (!c || isCellFree(c)) continue
-      const existing = out[slotKey][c]
-      if (!existing) {
-        out[slotKey][c] = teacher
-      } else {
-        const parts = existing.split(' · ')
-        if (!parts.includes(teacher)) {
-          out[slotKey][c] = `${existing} · ${teacher}`
-        }
-      }
-    }
-  }
-  return out
 }
 
 export function makePickKey(slotKey: SlotKey, absentTeacher: string): string {
@@ -453,7 +426,7 @@ export function uniqueDays(grid: TeacherGrid): string[] {
     const day = key.split('|')[0]
     if (day) set.add(day)
   }
-  return [...set].sort()
+  return sortWeekdayNames([...set])
 }
 
 export function periodsForDay(grid: TeacherGrid, day: string): string[] {
@@ -472,15 +445,4 @@ export function periodsForDay(grid: TeacherGrid, day: string): string[] {
     if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb
     return a.localeCompare(b)
   })
-}
-
-export function allClassesFromGrid(grid: TeacherGrid): string[] {
-  const set = new Set<string>()
-  for (const row of Object.values(grid.slots)) {
-    for (const cls of Object.values(row)) {
-      const c = cls.trim()
-      if (c && !isCellFree(c)) set.add(c)
-    }
-  }
-  return [...set].sort((a, b) => a.localeCompare(b))
 }
