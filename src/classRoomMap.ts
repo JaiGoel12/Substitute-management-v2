@@ -39,6 +39,32 @@ const DEFAULT_CLASS_ROOM_ENTRIES: [string, string][] = [
   ['11th Science B', '102'],
   ['11th Science C', '103'],
   ['11th Science D', '104'],
+
+  ['12TH ARTS E (SKT)', '18'],
+  ['11TH ARTS (SKT)', '18'],
+  ['10TH (SKT)', '18'],
+
+  ['11TH ARTS B (CS)', '102'],
+  ['12TH ARTS+COMM+SCI (CS)', '9'],
+  ['11TH ARTS+COMM+SCI (CS)', '102'],
+  ['9TH (CS)', '48'],
+  ['10TH (CS)', '41'],
+
+  ['12 ARTS+COMM+SCI (P)', '16'],
+  ['11 ARTS+COMM+SCI (P)', '8'],
+  ['9TH (P)', '49'],
+  ['10TH (P)', '40'],
+
+  ['12  ARTS+COMM+SCI (IT)', '103'],
+  ['11  ARTS+COMM+SCI (IT)', '101'],
+  ['9TH (IT)', '45'],
+  ['10TH (IT)', '42'],
+
+  ['12 ARTS+COMM+SCI (PAT)', '32'],
+  ['11 ARTS+COMM+SCI (PAT)', '104'],
+  ['9TH (PAT)', '46'],
+  ['10TH (PAT)', '20'],
+
 ]
 
 /**
