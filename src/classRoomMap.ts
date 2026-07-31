@@ -64,8 +64,17 @@ const DEFAULT_CLASS_ROOM_ENTRIES: [string, string][] = [
   ['11 ARTS+COMM+SCI (PAT)', '104'],
   ['9TH (PAT)', '46'],
   ['10TH (PAT)', '20'],
+  ['11TH COMM B+C', '50'],
+  ['11TH ARTS A+B', '18'],
+  ['11TH COMM A +ARTS A', '7'],
+  ['11TH ARTS A+B(Geo)', '35'],
+  ['12TH ARTS B+E', '30'],
+  ['12TH ARTS C(Maths)', '36'],
+  ['12  ARTS+COMM+SCI(Phy Edu)', '28'],
+  ['11  ARTS+COMM+SCI(Phy Edu)', '28'],
+  ['11TH ARTS F+B', '38'],
 
-]
+
 
 /**
  * Maps timetable / Excel labels (e.g. "11 COMM A", "12 SCI B", "12 ARTS C") to the same keys as
