@@ -24,6 +24,19 @@ import { DEFAULT_TIMETABLE_URL } from './defaultTimetable'
 import { sortTeachersByFirstName } from './teacherDisplay'
 import { todaysWeekdayName } from './scheduleCell'
 
+type Theme = 'light' | 'dark'
+
+function getInitialTheme(): Theme {
+  if (typeof window === 'undefined') return 'light'
+
+  const savedTheme = window.localStorage.getItem('theme')
+  if (savedTheme === 'light' || savedTheme === 'dark') {
+    return savedTheme
+  }
+
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
 function picksFromSubsExcluding(subs: Substitution[], excludeIndex: number): Record<string, string> {
   const o: Record<string, string> = {}
   subs.forEach((s, i) => {
@@ -60,6 +73,7 @@ function effectiveSubstitutePick(
 }
 
 function App() {
+  const [theme, setTheme] = useState<Theme>(getInitialTheme)
   const [error, setError] = useState<string | null>(null)
   const [baseGrid, setBaseGrid] = useState<TeacherGrid | null>(null)
   const [subs, setSubs] = useState<Substitution[]>([])
@@ -119,6 +133,12 @@ function App() {
     if (!baseGrid || !day) return []
     return teachersAtDailySubstitutionCap(subs, substitutePicks, day, baseGrid.teachers)
   }, [baseGrid, day, subs, substitutePicks])
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    document.documentElement.style.colorScheme = theme
+    window.localStorage.setItem('theme', theme)
+  }, [theme])
 
   useEffect(() => {
     setAbsentees([])
@@ -396,7 +416,17 @@ function App() {
     <MotionConfig reducedMotion="user">
     <div className="app">
       <header className="header">
-        <p className="header-kicker">Substitution planner</p>
+        <div className="header-topbar">
+          <p className="header-kicker">Substitution planner</p>
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+          >
+            {theme === 'dark' ? 'Light theme' : 'Dark theme'}
+          </button>
+        </div>
         <h1>Substitute timetable</h1>
       </header>
 
