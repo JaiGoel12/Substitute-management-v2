@@ -651,6 +651,123 @@ function App() {
       {subs.length > 0 && (
         <section className="card">
           <h2>Substitution summary</h2>
+          <div className="summary-mobile-list">
+            {groupSubsByAbsent(subs).map((group) => (
+              <article key={group.absent} className="summary-mobile-card">
+                <h3 className="summary-mobile-title">{group.absent}</h3>
+                <div className="summary-mobile-rows">
+                  {group.rows.map((row) => {
+                    const rowPickKey = makePickKey(row.sub.slotKey, row.sub.absentTeacher)
+                    const isEditing = editingPickKey === rowPickKey
+                    const editIdx = row.originalIndex
+                    let editOptions: string[] = []
+                    if (baseGrid && isEditing) {
+                      editOptions = substituteOptionsForPeriodSlot(
+                        baseGrid,
+                        row.sub.slotKey,
+                        uniqueAbsentsFromSubs(subs),
+                        picksFromSubsExcluding(subs, editIdx),
+                        row.sub.absentTeacher,
+                        { existingSubs: subs },
+                      )
+                      const d = editSubstituteDraft.trim()
+                      if (d && !editOptions.includes(d)) {
+                        editOptions = [...editOptions, d].sort()
+                      } else {
+                        editOptions = [...editOptions].sort()
+                      }
+                    }
+
+                    return (
+                      <div
+                        key={`${row.sub.slotKey}-${row.sub.absentTeacher}-${row.originalIndex}-mobile`}
+                        className="summary-mobile-row"
+                      >
+                        <div className="summary-mobile-meta">
+                          <div className="summary-mobile-field">
+                            <span className="summary-mobile-label">Period</span>
+                            <span className="summary-mobile-value">{slotPeriodLabel(row.sub.slotKey)}</span>
+                          </div>
+                          <div className="summary-mobile-field">
+                            <span className="summary-mobile-label">Class</span>
+                            <span className="summary-mobile-value">{row.sub.className}</span>
+                          </div>
+                          <div className="summary-mobile-field">
+                            <span className="summary-mobile-label">Substitute</span>
+                            <span className="summary-mobile-value">
+                              {isEditing ? (
+                                baseGrid ? (
+                                  <>
+                                    <select
+                                      className="summary-sub-select"
+                                      value={editSubstituteDraft}
+                                      onChange={(e) => setEditSubstituteDraft(e.target.value)}
+                                    >
+                                      <option value="">Choose substitute…</option>
+                                      {editOptions.map((opt) => (
+                                        <option key={opt} value={opt}>
+                                          {opt}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    {editOptions.length === 0 && !editSubstituteDraft.trim() && (
+                                      <span className="warn-inline"> No free teacher.</span>
+                                    )}
+                                  </>
+                                ) : (
+                                  substituteDisplayName(row.sub.substituteTeacher)
+                                )
+                              ) : (
+                                substituteDisplayName(row.sub.substituteTeacher)
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="summary-mobile-actions">
+                          {isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                className="primary summary-inline-btn"
+                                onClick={saveSummaryEdit}
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                className="secondary summary-inline-btn"
+                                onClick={cancelSummaryEdit}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="row-edit"
+                                disabled={!baseGrid}
+                                onClick={() => startSummaryEdit(row.sub)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="row-remove"
+                                onClick={() => removeSubstitution(row.originalIndex)}
+                              >
+                                Remove
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </article>
+            ))}
+          </div>
           <div className="summary-table-wrap">
             <table className="summary-table">
               <thead>
@@ -691,16 +808,17 @@ function App() {
                     return (
                       <tr
                         key={`${row.sub.slotKey}-${row.sub.absentTeacher}-${row.originalIndex}`}
+                        data-absent={group.absent}
                         className={`${zebra}${isFirstInGroup && isNotFirstGroup ? ' summary-group-divider' : ''}${isFirstInGroup ? ' summary-group-first-row' : ''}`}
                       >
                         {isFirstInGroup && (
-                          <td className="summary-absent-cell" rowSpan={group.rows.length}>
+                          <td className="summary-absent-cell" data-label="Teacher on leave" rowSpan={group.rows.length}>
                             <span className="summary-absent-name">{group.absent}</span>
                           </td>
                         )}
-                        <td className="summary-period">{slotPeriodLabel(row.sub.slotKey)}</td>
-                        <td>{row.sub.className}</td>
-                        <td>
+                        <td className="summary-period" data-label="Period">{slotPeriodLabel(row.sub.slotKey)}</td>
+                        <td data-label="Class">{row.sub.className}</td>
+                        <td data-label="Substitute">
                           {isEditing ? (
                             baseGrid ? (
                               <>
@@ -727,7 +845,7 @@ function App() {
                             substituteDisplayName(row.sub.substituteTeacher)
                           )}
                         </td>
-                        <td className="summary-actions">
+                        <td className="summary-actions" data-label="Actions">
                           <div className="summary-actions-inner">
                             {isEditing ? (
                               <>
@@ -780,10 +898,6 @@ function App() {
       {workingGrid && day && (
         <section className="card">
           <h2>Download PDF</h2>
-          <p className="hint">
-            The <strong>substitution summary PDF</strong> adds a blank <strong>Signature</strong> column for
-            printing; the on-screen table above does not show that column.
-          </p>
           <div className="pdf-actions">
             <button
               type="button"

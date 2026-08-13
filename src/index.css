@@ -86,7 +86,7 @@
 
 #root {
   width: 100%;
-  max-width: 960px;
+  max-width: none;
   margin: 0 auto;
   text-align: left;
   min-height: 100svh;
