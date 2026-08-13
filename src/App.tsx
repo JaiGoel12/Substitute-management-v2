@@ -72,6 +72,10 @@ function effectiveSubstitutePick(
   return fromSubs?.substituteTeacher ?? ''
 }
 
+function substituteDisplayName(name: string): string {
+  return name.trim() || 'Not assigned'
+}
+
 function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
   const [error, setError] = useState<string | null>(null)
@@ -294,15 +298,6 @@ function App() {
     if (needs.length === 0) {
       setError('No classes to cover — selected teachers are free in every period (nothing to assign).')
       return
-    }
-
-    for (const n of needs) {
-      if (!effectiveSubstitutePick(subs, substitutePicks, n.slotKey, n.absentTeacher).trim()) {
-        setError(
-          `Choose a substitute for ${n.absentTeacher} in ${slotPeriodLabel(n.slotKey)} (class ${n.className}).`,
-        )
-        return
-      }
     }
 
     const batch: Substitution[] = needs.map((n) => ({
@@ -726,10 +721,10 @@ function App() {
                                 )}
                               </>
                             ) : (
-                              row.sub.substituteTeacher
+                              substituteDisplayName(row.sub.substituteTeacher)
                             )
                           ) : (
-                            row.sub.substituteTeacher
+                            substituteDisplayName(row.sub.substituteTeacher)
                           )}
                         </td>
                         <td className="summary-actions">

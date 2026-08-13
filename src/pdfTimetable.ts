@@ -63,7 +63,7 @@ function buildSummaryBodyFlat(group: {
       slotPeriodLabel(row.sub.slotKey),
       row.sub.className,
       room || '—',
-      row.sub.substituteTeacher,
+      row.sub.substituteTeacher.trim(),
       '',
     ]
   })
@@ -93,11 +93,11 @@ function buildSummaryBodyRowspan(group: {
         period,
         row.sub.className,
         room,
-        row.sub.substituteTeacher,
+        row.sub.substituteTeacher.trim(),
         '',
       ])
     } else {
-      body.push([period, row.sub.className, room, row.sub.substituteTeacher, ''])
+      body.push([period, row.sub.className, room, row.sub.substituteTeacher.trim(), ''])
     }
   })
   return body

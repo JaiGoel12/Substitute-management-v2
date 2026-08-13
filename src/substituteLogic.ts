@@ -402,6 +402,9 @@ export function applySubstitutions(
     const classes = classesTaughtBy(next, s.slotKey, s.absentTeacher)
     for (const className of classes) {
       row[s.absentTeacher] = ''
+      if (!s.substituteTeacher.trim()) {
+        continue
+      }
       const subCell = (row[s.substituteTeacher] ?? '').trim()
       if (!isCellFree(subCell)) {
         throw new Error(
