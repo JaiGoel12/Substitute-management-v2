@@ -52,8 +52,8 @@ const DEFAULT_CLASS_ROOM_ENTRIES: [string, string][] = [
 
   ['12 ARTS+COMM+SCI (P)', '16'],
   ['11 ARTS+COMM+SCI (P)', '8'],
-  ['9TH (P)', '49'],
-  ['10TH (P)', '40'],
+  ['9TH (P)', '44'],
+  ['10TH (P)', '20'],
 
   ['12  ARTS+COMM+SCI (IT)', '103'],
   ['11  ARTS+COMM+SCI (IT)', '101'],
