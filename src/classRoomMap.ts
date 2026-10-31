@@ -8,9 +8,9 @@ const DEFAULT_CLASS_ROOM_ENTRIES: [string, string][] = [
   ['10th C', '40'],
   ['10th D', '41'],
   ['10th E', '42'],
-  ['9th A', '44'],
+  ['9th A', '46'],
   ['9th B', '45'],
-  ['9th C', '46'],
+  ['9th C', '44'],
   ['9th D', '47'],
   ['9th E', '48'],
   ['9th F', '49'],
@@ -43,22 +43,27 @@ const DEFAULT_CLASS_ROOM_ENTRIES: [string, string][] = [
   ['12TH ARTS E (SKT)', '18'],
   ['11TH ARTS (SKT)', '18'],
   ['10TH (SKT)', '18'],
+  ['9TH C+D+E SKT', '18'],
+  ['9TH A+B+F SKT', '18'],
 
   ['11TH ARTS B (CS)', '102'],
   ['12TH ARTS+COMM+SCI (CS)', '9'],
   ['11TH ARTS+COMM+SCI (CS)', '102'],
-  ['9TH (CS)', '48'],
+  ['9TH C+D+E CS', '48'],
+  ['9TH A+B+F CS', '48'],
   ['10TH (CS)', '41'],
 
   ['12 ARTS+COMM+SCI (P)', '16'],
   ['11 ARTS+COMM+SCI (P)', '8'],
-  ['9TH (P)', '49'],
-  ['10TH (P)', '40'],
+  ['9TH C+D+E P', '44'],
+  ['9TH A+B+F P', '44'],
+  ['10TH (P)', '20'],
 
   ['12  ARTS+COMM+SCI (IT)', '103'],
   ['11  ARTS+COMM+SCI (IT)', '101'],
-  ['9TH (IT)', '45'],
-  ['10TH (IT)', '42'],
+  ['9TH C+D+E IT', '45'],
+  ['9TH A+B+F IT', '45'],
+  ['10TH (IT)', '41'],
 
   ['12 ARTS+COMM+SCI (PAT)', '32'],
   ['11 ARTS+COMM+SCI (PAT)', '104'],
@@ -74,6 +79,7 @@ const DEFAULT_CLASS_ROOM_ENTRIES: [string, string][] = [
   ['11  ARTS+COMM+SCI(Phy Edu)', '28'],
   ['11TH ARTS F+B', '38'],
   ['12TH COMM A+ARTS C', '6'],
+  ['11TH SCI C + ARTS B', '17']
   
 
 ]
