@@ -496,6 +496,27 @@ select:focus-visible {
   min-width: 0;
 }
 
+.session-radios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-h);
+}
+
+.session-radios label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
+.session-radios input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .period-table {
   margin-bottom: 0;
 }

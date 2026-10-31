@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
 import './App.css'
 import { parseTeacherGridFromBuffer } from './parseGrid'
-import type { Substitution, TeacherGrid } from './types'
+import type { AbsenceSession, Substitution, TeacherGrid } from './types'
 import { isCellFree } from './cellNormalize'
 import {
   applySubstitutions,
@@ -10,8 +10,10 @@ import {
   collectSubstitutionNeeds,
   makePickKey,
   MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY,
+  periodNumberFromLabel,
   periodsForDay,
   removePicksForAbsentTeacher,
+  sessionCoversPeriod,
   substituteOptionsForPeriodSlot,
   teachersAtDailySubstitutionCap,
   unassignReasonLabel,
@@ -86,11 +88,15 @@ function App() {
   const [editSubstituteDraft, setEditSubstituteDraft] = useState('')
 
   const [day, setDay] = useState('')
-  /** Teachers absent (whole day / session); cannot be substitutes in any period. */
+  /** Teachers absent (whole day / session); cannot be substitutes in covered periods. */
   const [absentees, setAbsentees] = useState<string[]>([])
+  /** Per absent teacher: full day, first half (1–3), or second half (4–6). */
+  const [absenceSessions, setAbsenceSessions] = useState<Record<string, AbsenceSession>>({})
   /** Keys from makePickKey(slotKey, absentTeacher) → substitute name */
   const [substitutePicks, setSubstitutePicks] = useState<Record<string, string>>({})
-  const [assignPhase, setAssignPhase] = useState<'mark-absent' | 'choose-subs'>('mark-absent')
+  const [assignPhase, setAssignPhase] = useState<
+    'mark-absent' | 'choose-sessions' | 'choose-subs'
+  >('mark-absent')
   const [autoAssignReport, setAutoAssignReport] = useState<AutoAssignResult | null>(null)
   const [autoFilledKeys, setAutoFilledKeys] = useState<Set<string>>(() => new Set())
   const [teacherSearch, setTeacherSearch] = useState('')
@@ -130,7 +136,7 @@ function App() {
 
   const currentNeedsCount =
     baseGrid && day && orderedAbsent.length
-      ? collectSubstitutionNeeds(baseGrid, day, orderedAbsent).length
+      ? collectSubstitutionNeeds(baseGrid, day, orderedAbsent, absenceSessions).length
       : 0
 
   const teachersAtCapToday = useMemo(() => {
@@ -146,6 +152,7 @@ function App() {
 
   useEffect(() => {
     setAbsentees([])
+    setAbsenceSessions({})
     setSubstitutePicks({})
     setAssignPhase('mark-absent')
     setAutoAssignReport(null)
@@ -153,7 +160,10 @@ function App() {
   }, [day])
 
   useEffect(() => {
-    if (assignPhase === 'choose-subs' && absentees.length === 0) {
+    if (
+      (assignPhase === 'choose-subs' || assignPhase === 'choose-sessions') &&
+      absentees.length === 0
+    ) {
       setAssignPhase('mark-absent')
     }
   }, [assignPhase, absentees.length])
@@ -178,6 +188,7 @@ function App() {
       setEditingPickKey(null)
       setEditSubstituteDraft('')
       setAbsentees([])
+      setAbsenceSessions({})
       setSubstitutePicks({})
       setAssignPhase('mark-absent')
       setAutoAssignReport(null)
@@ -213,15 +224,37 @@ function App() {
     setAbsentees((prev) => {
       if (prev.includes(name)) {
         setSubstitutePicks((picks) => removePicksForAbsentTeacher(picks, name))
+        setAbsenceSessions((sessions) => {
+          const next = { ...sessions }
+          delete next[name]
+          return next
+        })
         return prev.filter((x) => x !== name)
       }
+      setAbsenceSessions((sessions) => ({ ...sessions, [name]: 'full' }))
       return [...prev, name]
     })
   }
 
   function clearAbsentSelection() {
     setAbsentees([])
+    setAbsenceSessions({})
     setSubstitutePicks({})
+  }
+
+  function setTeacherAbsenceSession(teacher: string, session: AbsenceSession) {
+    setAbsenceSessions((prev) => ({ ...prev, [teacher]: session }))
+    if (!baseGrid || !day) return
+    setSubstitutePicks((prev) => {
+      const next = { ...prev }
+      for (const period of periodsForDay(baseGrid, day)) {
+        const periodNum = periodNumberFromLabel(period)
+        if (periodNum != null && !sessionCoversPeriod(session, periodNum)) {
+          delete next[makePickKey(`${day}|${period}`, teacher)]
+        }
+      }
+      return next
+    })
   }
 
   function setPickSlot(slotKey: string, absent: string, substitute: string) {
@@ -241,7 +274,13 @@ function App() {
       return
     }
     setError(null)
-    const result = autoAssignSubstitutions(baseGrid, day, orderedAbsent, subs)
+    const result = autoAssignSubstitutions(
+      baseGrid,
+      day,
+      orderedAbsent,
+      subs,
+      absenceSessions,
+    )
     setSubstitutePicks(result.picks)
     setAutoAssignReport(result)
     setAutoFilledKeys(new Set(result.filledKeys))
@@ -278,6 +317,7 @@ function App() {
       picks,
       absent,
       { existingSubs: subs },
+      absenceSessions,
     )
     const current = effectiveSubstitutePick(subs, picks, slotKey, absent).trim()
     if (current && !options.includes(current)) {
@@ -294,7 +334,7 @@ function App() {
     if (!baseGrid || !day || orderedAbsent.length === 0) return
     setError(null)
 
-    const needs = collectSubstitutionNeeds(baseGrid, day, orderedAbsent)
+    const needs = collectSubstitutionNeeds(baseGrid, day, orderedAbsent, absenceSessions)
     if (needs.length === 0) {
       setError('No classes to cover — selected teachers are free in every period (nothing to assign).')
       return
@@ -327,6 +367,15 @@ function App() {
     setAutoFilledKeys(new Set())
   }
 
+  function goToSessionsStep() {
+    setError(null)
+    if (orderedAbsent.length === 0) {
+      setError('Mark at least one absent teacher first.')
+      return
+    }
+    setAssignPhase('choose-sessions')
+  }
+
   function goToSubstituteStep() {
     setError(null)
     if (orderedAbsent.length === 0) {
@@ -343,6 +392,11 @@ function App() {
   function backToAbsentStep() {
     setError(null)
     setAssignPhase('mark-absent')
+  }
+
+  function backToSessionsStep() {
+    setError(null)
+    setAssignPhase('choose-sessions')
   }
 
   function cancelSummaryEdit() {
@@ -493,19 +547,84 @@ function App() {
                     Clear absent selection
                   </button>
                 )}
+                <button type="button" className="primary" onClick={goToSessionsStep}>
+                  Next: choose absence periods
+                </button>
+              </div>
+            </motion.fieldset>
+          )}
+
+          {assignPhase === 'choose-sessions' && orderedAbsent.length > 0 && (
+            <motion.div
+              className="assign-block"
+              key="choose-sessions"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <h3 className="assign-title">Absence periods</h3>
+              <p className="hint">
+                Choose full day or which half each teacher is absent. Substitutions are only needed
+                for that session.
+              </p>
+              {orderedAbsent.map((absent) => {
+                const session = absenceSessions[absent] ?? 'full'
+                return (
+                  <div key={absent} className="absent-block">
+                    <h4 className="absent-name">{absent}</h4>
+                    <div
+                      className="session-radios"
+                      role="radiogroup"
+                      aria-label={`Absence session for ${absent}`}
+                    >
+                      <label>
+                        <input
+                          type="radio"
+                          name={`session-${absent}`}
+                          checked={session === 'full'}
+                          onChange={() => setTeacherAbsenceSession(absent, 'full')}
+                        />
+                        Full day
+                      </label>
+                      <label>
+                        <input
+                          type="radio"
+                          name={`session-${absent}`}
+                          checked={session === 'first'}
+                          onChange={() => setTeacherAbsenceSession(absent, 'first')}
+                        />
+                        First half (1–3)
+                      </label>
+                      <label>
+                        <input
+                          type="radio"
+                          name={`session-${absent}`}
+                          checked={session === 'second'}
+                          onChange={() => setTeacherAbsenceSession(absent, 'second')}
+                        />
+                        Second half (4–6)
+                      </label>
+                    </div>
+                  </div>
+                )
+              })}
+              <div className="step-actions">
+                <button type="button" className="secondary" onClick={backToAbsentStep}>
+                  Back
+                </button>
                 <button
                   type="button"
                   className="secondary"
-                  disabled={absentees.length === 0}
                   onClick={goToSubstituteStepAndAutoAssign}
                 >
                   Auto-assign &amp; review
                 </button>
                 <button type="button" className="primary" onClick={goToSubstituteStep}>
-                  Next: assign substitutes by period
+                  Next: assign substitutes
                 </button>
               </div>
-            </motion.fieldset>
+            </motion.div>
           )}
 
           {assignPhase === 'choose-subs' && orderedAbsent.length > 0 && day && (
@@ -560,12 +679,14 @@ function App() {
                 </button>
               </div>
               <p className="hint edit-absent-line">
-                <button type="button" className="linkish" onClick={backToAbsentStep}>
-                  ← Edit absent list
+                <button type="button" className="linkish" onClick={backToSessionsStep}>
+                  ← Edit sessions
                 </button>
               </p>
 
-              {orderedAbsent.map((absent) => (
+              {orderedAbsent.map((absent) => {
+                const session = absenceSessions[absent] ?? 'full'
+                return (
                 <div key={absent} className="absent-block">
                   <h4 className="absent-name">{absent}</h4>
                   <table className="assign-table period-table">
@@ -579,6 +700,22 @@ function App() {
                     <tbody>
                       {periods.map((period) => {
                         const slotKey = `${day}|${period}`
+                        const periodNum = periodNumberFromLabel(period)
+                        if (
+                          periodNum != null &&
+                          !sessionCoversPeriod(session, periodNum)
+                        ) {
+                          return (
+                            <tr key={slotKey} className="row-muted">
+                              <td data-label="Period">{period}</td>
+                              <td colSpan={2} data-label="Status">
+                                <span className="muted">
+                                  Present this half — no substitution
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        }
                         const raw = baseGrid.slots[slotKey]?.[absent] ?? ''
                         const cell = String(raw).trim()
                         const free = !cell || isCellFree(cell)
@@ -632,10 +769,11 @@ function App() {
                     </tbody>
                   </table>
                 </div>
-              ))}
+                )
+              })}
 
               <div className="step-actions">
-                <button type="button" className="secondary" onClick={backToAbsentStep}>
+                <button type="button" className="secondary" onClick={backToSessionsStep}>
                   Back
                 </button>
                 <button type="button" className="primary" onClick={applyAllSubstitutions}>

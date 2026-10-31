@@ -1,6 +1,9 @@
 /** Normalized key: `${day}|${period}` */
 export type SlotKey = string
 
+/** Which part of the day a teacher is marked absent. */
+export type AbsenceSession = 'full' | 'first' | 'second'
+
 export interface TeacherGrid {
   /** Column headers after Day + Period */
   teachers: string[]
