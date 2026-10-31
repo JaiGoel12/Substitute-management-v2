@@ -29,7 +29,7 @@
   width: min(5.5rem, 28%);
   height: 3px;
   border-radius: 3px;
-  background: linear-gradient(90deg, var(--accent), transparent);
+  background: linear-gradient(90deg, var(--accent), transparent);  
 }
 
 .header-kicker {
