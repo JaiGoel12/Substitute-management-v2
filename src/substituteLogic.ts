@@ -5,7 +5,35 @@ import {
   isBlockedAsSubstituteInSlot,
   maxSubstitutionsPerDayForTeacher,
 } from './substituteAvailability'
-import type { SlotKey, Substitution, TeacherGrid } from './types'
+import type { AbsenceSession, SlotKey, Substitution, TeacherGrid } from './types'
+
+/** Parse a period number from a period label (e.g. "P1", "2", "P 3"). */
+export function periodNumberFromLabel(periodLabel: string): number | null {
+  const m = periodLabel.match(/P?\s*(\d+)/i)
+  if (!m) return null
+  return parseInt(m[1], 10)
+}
+
+/** Whether an absence session covers the given period number (1–3 first, 4–6 second). */
+export function sessionCoversPeriod(session: AbsenceSession, period: number): boolean {
+  if (session === 'full') return true
+  if (session === 'first') return period >= 1 && period <= 3
+  if (session === 'second') return period >= 4 && period <= 6
+  return true
+}
+
+/** Teachers whose absence session covers this slot’s period. */
+export function absenteesForSlot(
+  slotKey: SlotKey,
+  sessions: Record<string, AbsenceSession>,
+): string[] {
+  const periodPart = slotKey.split('|')[1]?.trim() ?? ''
+  const period = periodNumberFromLabel(periodPart)
+  if (period == null) return Object.keys(sessions)
+  return Object.keys(sessions).filter((t) =>
+    sessionCoversPeriod(sessions[t] ?? 'full', period),
+  )
+}
 
 export const MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY = 3
 
@@ -169,6 +197,7 @@ export function substituteOptionsForPeriodSlot(
   picks: Record<string, string>,
   currentAbsent: string,
   opts?: SubstituteSlotOptions,
+  sessions?: Record<string, AbsenceSession>,
 ): string[] {
   const row = grid.slots[slotKey]
   if (!row) return []
@@ -176,7 +205,12 @@ export function substituteOptionsForPeriodSlot(
   const existingSubs = opts?.existingSubs ?? []
   const mergedPicks = { ...picksRecordFromSubs(existingSubs), ...picks }
 
-  const absentSet = new Set(allAbsentTeachers.map((a) => a.trim()))
+  const absentSet = new Set(
+    (sessions
+      ? absenteesForSlot(slotKey, sessions)
+      : allAbsentTeachers
+    ).map((a) => a.trim()),
+  )
   const takenSubs = new Set<string>()
   for (const [key, sub] of Object.entries(mergedPicks)) {
     const subTrim = sub.trim()
@@ -215,6 +249,7 @@ export function eligibleSubstitutesForNeed(
   picks: Record<string, string>,
   day: string,
   currentAbsent: string,
+  sessions?: Record<string, AbsenceSession>,
 ): string[] {
   return substituteOptionsForPeriodSlot(
     grid,
@@ -228,6 +263,7 @@ export function eligibleSubstitutesForNeed(
       maxPerDay: MAX_SUBSTITUTIONS_PER_TEACHER_PER_DAY,
       excludePickKey: makePickKey(slotKey, currentAbsent),
     },
+    sessions,
   )
 }
 
@@ -245,6 +281,7 @@ function sortNeedsScarcityFirst(
   orderedAbsent: string[],
   existingSubs: Substitution[],
   picks: Record<string, string>,
+  sessions?: Record<string, AbsenceSession>,
 ): typeof needs {
   return [...needs].sort((a, b) => {
     const optsA = eligibleSubstitutesForNeed(
@@ -255,6 +292,7 @@ function sortNeedsScarcityFirst(
       picks,
       day,
       a.absentTeacher,
+      sessions,
     ).length
     const optsB = eligibleSubstitutesForNeed(
       grid,
@@ -264,6 +302,7 @@ function sortNeedsScarcityFirst(
       picks,
       day,
       b.absentTeacher,
+      sessions,
     ).length
     if (optsA !== optsB) return optsA - optsB
     const pa = periodIndexOnDay(grid, day, a.slotKey)
@@ -299,13 +338,22 @@ export function autoAssignSubstitutions(
   day: string,
   orderedAbsent: string[],
   existingSubs: Substitution[],
+  sessions?: Record<string, AbsenceSession>,
 ): AutoAssignResult {
   const picks: Record<string, string> = {}
   const unassigned: AutoAssignUnassigned[] = []
   const filledKeys: string[] = []
 
-  const needs = collectSubstitutionNeeds(grid, day, orderedAbsent)
-  const sorted = sortNeedsScarcityFirst(grid, day, needs, orderedAbsent, existingSubs, picks)
+  const needs = collectSubstitutionNeeds(grid, day, orderedAbsent, sessions)
+  const sorted = sortNeedsScarcityFirst(
+    grid,
+    day,
+    needs,
+    orderedAbsent,
+    existingSubs,
+    picks,
+    sessions,
+  )
 
   for (const need of sorted) {
     const eligible = eligibleSubstitutesForNeed(
@@ -316,6 +364,7 @@ export function autoAssignSubstitutions(
       picks,
       day,
       need.absentTeacher,
+      sessions,
     )
 
     if (eligible.length === 0) {
@@ -326,6 +375,7 @@ export function autoAssignSubstitutions(
         picks,
         need.absentTeacher,
         { existingSubs },
+        sessions,
       )
       unassigned.push({
         ...need,
@@ -349,6 +399,7 @@ export function collectSubstitutionNeeds(
   grid: TeacherGrid,
   day: string,
   absentTeachersInOrder: string[],
+  sessions?: Record<string, AbsenceSession>,
 ): { slotKey: SlotKey; absentTeacher: string; className: string }[] {
   const periods = periodsForDay(grid, day)
   const out: { slotKey: SlotKey; absentTeacher: string; className: string }[] = []
@@ -356,6 +407,13 @@ export function collectSubstitutionNeeds(
 
   for (const absent of absentTeachersInOrder) {
     for (const period of periods) {
+      const periodNum = periodNumberFromLabel(period)
+      if (
+        periodNum != null &&
+        !sessionCoversPeriod(sessions?.[absent] ?? 'full', periodNum)
+      ) {
+        continue
+      }
       const slotKey: SlotKey = `${d}|${period.trim()}`
       const row = grid.slots[slotKey]
       if (!row) continue
